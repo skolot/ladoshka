@@ -1,0 +1,14 @@
+# SHM_SIZE sets the maximum size (in bytes) that the /dev/shm tmpfs can use.
+# If this is not set then the size defaults to the value of TMPFS_SIZE
+# if that is set; otherwise to the kernel's default.
+#
+# The size will be rounded down to a multiple of the page size, 4096 bytes.
+SHM_SIZE=64M
+RAMRUN=yes
+RUN_SIZE=32M
+RAMLOCK=yes
+LOCK_SIZE=32M
+RAMLOG=yes
+LOG_SIZE=128M
+RAMTMP=yes
+TMP_SIZE=128M

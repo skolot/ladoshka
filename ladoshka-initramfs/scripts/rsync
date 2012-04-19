@@ -1,0 +1,151 @@
+chk_rsync_part() {
+    mkdir -p /.tmproot
+
+    if ! mount /dev/sda1 /.tmproot; then
+	fsck.jfs -a /dev/sda1 || return 1
+	mount /dev/sda1 /.tmproot || return 1
+    fi	 
+
+    if [ -f /.tmproot/.rsyncpart ]; then
+        umount /.tmproot
+        return 0;
+    else
+        umount /.tmproot
+        return 1
+    fi
+}
+
+mk_rsync_part() {
+    sfdisk /dev/sda -uM  -q << EOF
+0,,L,*
+;
+;
+;
+EOF
+}
+
+prepare_mount() {
+    local need_fdisk=0
+
+    # FIXME: ${device} in kernel cmd
+    if [ -b /dev/sda ]; then
+        if [ -b /dev/sda1 ]; then
+            if ! chk_rsync_part; then
+                need_fdisk=1
+            fi
+        else
+            need_fdisk=1
+        fi
+    else
+        echo "ERR: /dev/sda don't exist!!"
+        return 1
+    fi
+
+    # mkpart and fs is need
+
+    if [ "${need_fdisk}" -ne 0 ]; then
+        [ "$quiet" != "y" ] && log_begin_msg "Ladoshka not found... creating new fs"
+        [ "$quiet" != "y" ] && log_begin_msg "Create partition"
+
+        if ! mk_rsync_part >/dev/null; then
+            echo "ERR: mkpart failed!!"
+            return 1
+        fi
+        
+        [ "$quiet" != "y" ] && log_begin_msg "Create fs"
+
+        if ! mkfs.jfs -q /dev/sda1 >/dev/null ; then
+            echo "ERR: mkpart failed!!"
+            return 1
+        fi
+    fi
+}
+
+
+rsync_root()
+{
+	local try=0
+
+	[ "${debug}" == "y" ] && set -x 
+
+	[ "$quiet" != "y" ] && log_begin_msg "Running /scripts/rsync-top"
+	run_scripts /scripts/rsync-top
+	[ "$quiet" != "y" ] && log_end_msg
+
+	# For DHCP
+	modprobe af_packet
+
+	wait_for_udev 10
+
+	# Default delay is around 180s
+	# FIXME: add usplash_write info
+	if [ -z "${ROOTDELAY}" ]; then
+		delay=180
+	else
+		delay=${ROOTDELAY}
+	fi
+
+	while [ ${try} -eq 5 ]; do 
+		configure_networking
+		ifconfig eth0 | grep "inet addr" >/dev/null 2>&1 
+		if [ $? -ne 0 ]; then
+			echo "try get ip from dhcp ($i)"
+			sleep 5 
+			try=$((try+1))
+		else
+			break
+		fi
+	
+	done
+
+	modprobe jfs
+
+    [ "$quiet" != "y" ] && log_begin_msg "Prepare mounting filesystem"
+
+
+    if ! prepare_mount; then
+        echo "ERR: prepare script failed!!"
+        return 1
+    fi
+
+    mkdir -p /.tmproot
+
+    [ "$quiet" != "y" ] && log_begin_msg "mount root filesystem"
+
+    mount /dev/sda1 /.tmproot || return 1
+
+    [ "$quiet" != "y" ] && rsync_v="-v"
+
+    [ "$quiet" != "y" ] && log_begin_msg "Sync root filesystem"
+
+    if ! rsync ${rsync_v} -azlpH --delete-excluded ${rsyncurl} /.tmproot/; then
+        echo "ERR: rsync failed!!"
+        return 1
+    fi
+
+    [ "$quiet" != "y" ] && log_begin_msg "umount root filesystem"
+
+    umount /.tmproot || return 1
+    
+	[ "$quiet" != "y" ] && log_begin_msg "Running /scripts/rsync-bottom"
+	run_scripts /scripts/rsync-bottom
+	[ "$quiet" != "y" ] && log_end_msg
+
+	[ "${debug}" == "y" ] && set +x
+
+	return 0
+}
+
+
+if ! rsync_root; then
+    sh || true
+fi
+
+ROOT=/dev/sda1
+
+[ "$quiet" != "y" ] && log_begin_msg "start local mount"
+
+. /scripts/local
+
+
+[ "$quiet" != "y" ] && log_begin_msg "end local mount"

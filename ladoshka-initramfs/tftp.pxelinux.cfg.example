@@ -1,0 +1,8 @@
+prompt 1
+default linux
+timeout 10
+
+label linux
+kernel vmlinuz
+append initrd=initrd.img init=/sbin/init root=tmpfs tftphost=192.168.1.1 tftpblksize=10240 tftpfile=root.cpio.gz tmpfssize=650M ip=dhcp
+

@@ -1,0 +1,8 @@
+prompt 1
+default linux
+timeout 10
+
+label linux
+kernel linux 
+append initrd=initrd.img init=/sbin/init rw root=rsync rsyncurl=rsync://192.168.1.1/ladoshka/ ip=dhcp
+

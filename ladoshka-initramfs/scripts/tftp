@@ -1,0 +1,51 @@
+
+mountroot()
+{
+	[ "${debug}" == "y" ] && set -x 
+
+	[ "$quiet" != "y" ] && log_begin_msg "Running /scripts/tftp-top"
+	run_scripts /scripts/tftp-top
+	[ "$quiet" != "y" ] && log_end_msg
+
+	# For DHCP
+	modprobe af_packet
+
+	wait_for_udev 10
+
+	# Default delay is around 180s
+	# FIXME: add usplash_write info
+	if [ -z "${ROOTDELAY}" ]; then
+		delay=180
+	else
+		delay=${ROOTDELAY}
+	fi
+
+	mount -t tmpfs -osize=${tmpfssize} roottmpfs ${rootmnt} 
+
+	if [ $? -ne 0 ]; then 
+		echo "ERR: can't mount root fs into tmpfs"
+		sh || true
+	fi
+
+	configure_networking
+
+	[ -z "${tftpblksize}" ] && tftpblksize=10240
+
+	cd ${rootmnt}
+
+	tftp ${tftphost} ${tftpport} -g -r root.cpio -l /proc/self/fd/1 -b ${tftpblksize} | cpio -id
+
+	cd -
+
+        if [ $? -ne 0 ]; then 
+                echo "ERR: can't get root from tftp"
+                sh || true
+        fi
+
+	[ "$quiet" != "y" ] && log_begin_msg "Running /scripts/tftp-bottom"
+	run_scripts /scripts/tftp-bottom
+	[ "$quiet" != "y" ] && log_end_msg
+
+	[ "${debug}" == "y" ] && set +x
+}
+
